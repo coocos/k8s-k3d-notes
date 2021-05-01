@@ -206,7 +206,7 @@ spec:
                   image: k3d-my-cluster-registry:50785/pod-example:0.1
 ```
 
-What this definition essentially states is that the ReplicaSet will create three pods, all of which will run our Flask application. It will also assign a label named `app` with a value of `example` to each of our pods, which is a key thing. ReplicaSets work by using these labels to select a set pods to be the replicas. This is defined with the `matchLabels` attribute. If there aren't enough of pods with matching labels, then the ReplicaSet will create more. If there are too many, then it will delete some.
+What this definition essentially states is that the ReplicaSet will create three pods, all of which will run our Flask application. It will also assign a label named `app` with a value of `example` to each of our pods, which is a key thing. ReplicaSets work by using these labels to select a set of pods to be the replicas. This is defined with the `matchLabels` attribute. If there aren't enough of pods with matching labels, ReplicaSet will create more. If there are too many, it will delete some.
 
 Now let's get cracking and create our ReplicaSet:
 
@@ -236,7 +236,7 @@ example-replica-set-rc4kf   1/1     Running   0          5m32s   app=example
 example-replica-set-nz48n   1/1     Running   0          5m32s   app=example
 ```
 
-If you take a closer look at a them, you might also notice that some of them have been scheduled to different nodes:
+If you take a closer look at a them, you may also notice that some of them have been scheduled to different nodes:
 
 ```shell
 $ kubectl describe pods | egrep -i 'Node:|IP:'
@@ -283,5 +283,73 @@ Events:
 By now we have multiple replicas of our toy application running. How do we go about routing traffic to them though? We know the IPs of the pods, but these IPs can change as pods are deleted and created due to nodes crashing and whatnot. How can we reach these ephemeral pods in a reliable manner? Enter services.
 
 ## Service please
+
+Services provide a way to route traffic to multiple pods. Even if new pods are created and old ones removed, the service will still provide a way to always reach the pods.
+
+### Creating a service
+
+There are several service types, the default being ClusterIP. ClusterIP essentially gives you a cluster internal IP, which you can use to reach the service and thus the pods. Note that this IP is only visible _within_ the cluster, i.e. you can't use it to reach the pods from outside the cluster. However, this is fine for our example purposes. So once again, we'll whip up a YAML definition for our service:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: example-service-cluster-ip
+spec:
+  selector:
+    app: example
+  ports:
+    - port: 80
+      targetPort: 5000
+```
+
+What this states is that we want a service, which selects all pods with the label `app` being equal to `example`. The service will be available at port 80 and targets the port 5000 on the pods. So let's create the service and then examine it:
+
+```shell
+$ kubectl apply -f service-cluster-ip.yml
+
+service/example-service-cluster-ip created
+
+$ kubectl describe svc/service-cluster-ip
+
+Name:              example-service-cluster-ip
+Namespace:         default
+Labels:            <none>
+Annotations:       <none>
+Selector:          app=example
+Type:              ClusterIP
+IP:                10.43.228.111
+Port:              <unset>  80/TCP
+TargetPort:        5000/TCP
+Endpoints:         10.42.0.31:5000,10.42.0.32:5000,10.42.1.20:5000
+Session Affinity:  None
+Events:            <none>
+```
+
+As you can see, we now have an IP we reach the service with. Furthermore, the service lists the IPs of our pods as its endpoints. If you now delete one of the pods, the service will remove the endpoint of that particular pod. Once the ReplicaSet controller creates a replacement pod for the deleted one, the service will add the endpoint of the new pod to its endpoints. Pretty nifty!
+
+### Reaching our service
+
+So the service seemingly tracks the pod IPs, but how do we talk to the service? We can once again utilize a simple pod running busybox. This time, let's start the pod in an interactive mode, so we can run wget multiple times against the service IP:
+
+```shell
+$ kubectl run -it busybox --image=busybox --rm --restart=Never
+
+/ # wget -q -O - 10.43.228.111
+{"host":"example-replica-set-pslp6"}
+
+/ # wget -q -O - 10.43.228.111
+{"host":"example-replica-set-rw7jq"}
+
+/ # wget -q -O - 10.43.228.111
+{"host":"example-replica-set-lxzzv"}
+```
+
+As you can see, the service is now routing our requests to the different pods. Kubernetes will also create a DNS name for the service, so you can use its name instead of the IP:
+
+```shell
+/ # wget -q -O - example-service-cluster-ip
+{"host":"example-replica-set-pslp6"}
+```
 
 ## Deployments
