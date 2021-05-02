@@ -1,6 +1,6 @@
-# k8s-experiments
+# k8s-k3d-notes
 
-This repository contains notes and toy applications I've developed in order to grok using Kubernetes. I find writing things down in a blog'ish form helps me grasp and remember concepts better. These notes probably aren't useful for you but hey, who knows!
+This repository contains notes I've written while learning Kubernetes. I find writing things down in a blog'ish form helps me grasp and remember concepts better. These notes probably aren't useful for you but hey, who knows!
 
 ## Creating a cluster
 
