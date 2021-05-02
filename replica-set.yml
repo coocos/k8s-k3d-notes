@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+    name: example-replica-set
+    labels:
+        app: example
+spec:
+    replicas: 3
+    selector:
+        matchLabels:
+            app: example
+    template:
+        metadata:
+            labels:
+                app: example
+        spec:
+            containers:
+                - name: example-container
+                  image: k3d-my-cluster-registry:50237/pod-example:0.1

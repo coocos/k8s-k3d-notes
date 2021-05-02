@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: example
+  name: pod-example
+spec:
+  containers:
+  - image: k3d-my-cluster-registry:50785/pod-example:0.1
+    name: pod-example
