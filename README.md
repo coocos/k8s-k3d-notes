@@ -68,7 +68,7 @@ Now that we have a cluster up and running, we can start experimenting with Kuber
 
 ### A simple application
 
-To get the ball rolling, let's write a [trivial Python web application](./pod-example/) with Flask, which we'll deploy to the cluster as a pod:
+To get the ball rolling, let's write a [trivial Python web application](./app/) with Flask, which we'll deploy to the cluster as a pod:
 
 ```python
 import platform
