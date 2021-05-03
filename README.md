@@ -1,6 +1,18 @@
 # k8s-k3d-notes
 
-This repository contains notes I've written while learning Kubernetes using [k3d](https://github.com/rancher/k3d). I find writing things down in a blog'ish form helps me grasp and remember concepts better. These notes probably aren't useful for you but hey, who knows!
+This repository contains notes I've written while getting familiar with Kubernetes using [k3d](https://github.com/rancher/k3d). I find writing things down in a blog'ish tutorial form helps me grasp concepts better. These notes probably aren't useful for you but hey, who knows!
+
+These notes cover the following things:
+
+* how to get started with Kubernetes by creating a development cluster using k3d
+* how to publish a container image to the cluster container registry
+* creating a Pod using the published container image
+* using ReplicaSets to run multiple copies of a Pod
+* routing internal and external traffic to Pods using Services
+* using Deployments to scale and rollout Pods
+* exposing services using an Ingress
+
+Plenty of Kubernetes concepts are not covered here, including ConfigMaps, Secrets, DaemonSets, Jobs, CronJobs, PersistentVolumes and many other things. Please see the [Kubernetes documentation](https://kubernetes.io/docs/concepts/) for more information.
 
 ## Creating a cluster
 
@@ -16,7 +28,7 @@ Then, create a simple cluster with one server node, one worker node and a contai
 $ k3d cluster create my-cluster --servers 1 --agents 1 --registry-create
 ```
 
-If everything went okay, now you should have a working cluster. You can verify this by:
+If everything went okay, now you should have a working cluster. You can verify this with:
 
 ```shell
 $ kubectl cluster-info
@@ -73,7 +85,7 @@ def home():
     }
 ```
 
-Even if you're not familiar with Flask, this should be rather easy to understand. Essentially when we send an HTTP GET request to `/`, the application will return a JSON payload with the network name of the host.
+Even if you're not familiar with Flask, this should be rather easy to understand. When the application receives an HTTP GET request to `/`, it will return a JSON payload with the network name of the host.
 
 ### Containerizing the application
 
@@ -124,13 +136,13 @@ $ docker tag pod-example k3d-my-cluster-registry:50785/pod-example:0.1
 $ docker push k3d-my-cluster-registry:50785/pod-example:0.1
 ```
 
-> If you're running MacOS, then k3d-my-cluster-registry might not be a reachable host, because container IPs are not automatically reachable from the MacOS host. In that case you can just add the host as a new entry in /etc/hosts, i.e. map k3d-my-cluster-registry to 127.0.0.1.
+> If you're running MacOS, then k3d-my-cluster-registry might not be a reachable host, because containers are not automatically reachable from the MacOS host. In that case you can just add the host as a new entry in  `/etc/hosts`, i.e. map k3d-my-cluster-registry to 127.0.0.1.
 
-And hopefully things went smoothly.
+And now you've got your container image published and ready to go.
 
 ### Deploying the application as a pod
 
-So by now we've got our application written, containerized and pushed to the registry. Next we'll need to whip up a simple pod definition `pod-example.yml`:
+So by now we've written our application, containerized it and pushed the container image the registry. Next we'll need to whip up a simple pod definition `pod-example.yml`:
 
 ```yaml
 apiVersion: v1
@@ -156,7 +168,7 @@ You can also check its logs with `kubectl logs pod-example` or inspect the pod i
 
 ### Talking to the pod
 
-So the pod is now running within our cluster. How do we actually talk to it with say, something like curl? Pods for all intents and purposes do not really exist outside the cluster, but one way we can reach the pod and see if the HTTP API is actually responding is by creating yet another pod!
+So the pod is now running within our cluster. How do we actually talk to it with say, something like curl? Pods for all intents and purposes do not really exist outside the cluster, but one of the many ways we can reach the pod and see if the HTTP API is actually responding is by creating yet another pod!
 
 First, you want to grab the IP of our currently running pod:
 
@@ -166,7 +178,7 @@ $ kubectl get pods/pod-example -o json | jq '.status.podIP'
 "10.42.0.6"
 ```
 
-Note that this is the IP of the pod _within_ the cluster. You can't really reach it outside the cluster just yet. In order to communicate with it, let's create a temporary [busybox](https://en.wikipedia.org/wiki/BusyBox) pod and use wget to send an HTTP request to our pod running Flask:
+Note that this is the IP of the pod _within_ the cluster. You can't really reach it outside the cluster just yet. In order to communicate with it, we'll create a temporary [busybox](https://en.wikipedia.org/wiki/BusyBox) pod and use wget to send an HTTP request to our pod running Flask:
 
 ```shell
 $ kubectl run -it busybox --image=busybox --rm --restart=Never -- wget -q -O - 10.42.0.6:5000
@@ -178,7 +190,7 @@ So our Flask app is actually up and running within the pod. Neat!
 
 ## Why settle for one?
 
-Currently our Flask application is running in a single pod. If you delete the pod using `kubectl delete pods/pod-example`, then that particular pod and the application as a whole is gone. Kubernetes neither re-creates the pod nor runs multiple replicas of it by default. To do that, you need to use a [ReplicaSet](https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/). ReplicaSets essentially allow you to define how many copies of a stateless application you want and delegate the details to Kubernetes. Kubernetes will monitor how many replicas are running at a given time and if there are too many or too few, it will correct the situation by scheduling more pods to nodes or deleting excess pods.
+Currently our Flask application is running in a single pod. If you delete the pod using `kubectl delete pods/pod-example`, then that particular pod and the application as a whole is gone. Kubernetes neither recreates the pod nor runs multiple replicas of it by default. To do that, you need to use a [ReplicaSet](https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/). ReplicaSets essentially allow you to define how many copies of a pod you want and delegates the details to Kubernetes. Kubernetes (or [controllers](https://kubernetes.io/docs/concepts/architecture/controller/) within Kubernetes to be exact) will monitor how many replicas are running at a given time and if there are too many or too few, it will correct the situation by creating more pods or deleting excess pods.
 
 ### Creating a ReplicaSet
 
@@ -391,7 +403,7 @@ $ kubectl apply -f service-node-port.yml
 
 > Because we created a new cluster, our pods are gone, so the service has no pods to route traffic to. To bring them back up, follow the steps we took previously. You will also need to republish the container image.
 
-If you now check the services, you'll see that the type of the service is NodePort, but it also has a ClusterIP:
+If you now check the services, you'll see that the type of the service is now NodePort:
 
 ```shell
 $ kubectl get svc
@@ -413,9 +425,9 @@ So we finally have a method of routing traffic from outside the cluster to our p
 
 ## Deployments
 
-We now have a replicated application, which we can also reach outside of the cluster. However, how should we go about updating our application? What if we want to update the Flask application with a new feature? One way we can do this is by updating the template spec of the container in our ReplicaSet via `kubectl edit rs/my-example-replica-set`. However, editing the ReplicaSet does not by itself trigger a change in the pods it owns. Even if you push a new image to registry and update the ReplicaSet to use it, nothing will automatically happen. Instead, you have to delete a pod. Only then will the ReplicaSet controller spin up a new pod with our new image. To make performing updates like this less awkward, Kubernetes provides a solution called a Deployment.
+We now have a replicated application, which we can also reach outside of the cluster. However, how should we go about updating our application? What if we want to update the Flask application with a new feature? One way we can do this is by updating the template spec of the container in our ReplicaSet via `kubectl edit rs/my-example-replica-set`. However, editing the ReplicaSet does not by itself trigger a change in the pods it owns. Even if you push a new image to registry and update the ReplicaSet to use it, nothing will automatically happen. Instead, you have to delete a pod. Only then will the ReplicaSet controller spin up a new pod with our new image. To make performing updates like this less awkward, Kubernetes provides a solution called a [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/).
 
-Deployments essentially create and manage ReplicaSets. Once you update a container image defined in the Deployment template, it will create a new ReplicaSet using the new image. Then it will progressively start taking down pods in the old ReplicaSet and bringing up new ones in the new ReplicaSet. This is done by default in a rolling manner, i.e. there is no point in time, where there isn't a pod running your container. This way you can update your applications with zero downtime.
+Deployments essentially create and manage ReplicaSets. Once you update a container image defined in the Deployment template, it will create a new ReplicaSet using the new image. Then it will progressively start taking down pods in the old ReplicaSet and bringing up new ones in the new ReplicaSet. This is done by default in a rolling manner, i.e. there is no point in time where there isn't a pod running your container. This way you can update your applications with zero downtime.
 
 ### Creating a Deployment
 
@@ -465,9 +477,9 @@ example-deployment-d56888b5-cdvf7   1/1     Running   0          6s
 example-deployment-d56888b5-vb4cq   1/1     Running   0          6s
 ```
 
-### Rolling update
+### Performing a rolling update
 
-In order to demonstrate a rolling update using our Deployment, we'll need to publish a new image, so let's update the example Flask application to also return the IP address of the pod it'll be running in:
+In order to demonstrate a rolling update using our Deployment, we'll need to publish a new image we'll update to, so let's update the example Flask application to also return the IP address of the pod it'll be running in:
 
 ```python
 import platform
@@ -501,6 +513,7 @@ example-deployment-5b55f4c96   3         3         3       5s
 example-deployment-d56888b5    0         0         0       63s
 
 $ kubectl get pods
+
 NAME                                 READY   STATUS        RESTARTS   AGE
 example-deployment-5b55f4c96-c86cm   1/1     Running       0          7s
 example-deployment-d56888b5-bnqs8    1/1     Terminating   0          65s
@@ -510,7 +523,7 @@ example-deployment-5b55f4c96-l2fk2   1/1     Running       0          4s
 example-deployment-d56888b5-kbswh    1/1     Terminating   0          65s
 ```
 
-We can use wget once again from within the cluster to communicate with the pod to see that yes, it is using our new container image:
+We can use wget once again from within the cluster to see that yes, the pods are using our new container image:
 
 ```shell
 $ wget -q -O - 10.42.1.24:5000
@@ -518,7 +531,7 @@ $ wget -q -O - 10.42.1.24:5000
 {"host":"example-deployment-5b55f4c96-c86cm","ip":"10.42.1.24"}
 ```
 
-Once this rollout has completed, the previous ReplicaSet and pods are gone. You can check the status of the rollout like this:
+Once this rollout has completed, the previous ReplicaSet and its pods are gone. You can check the status of the rollout like this:
 
 ```shell
 $ kubectl rollout status deployment/example-deployment
@@ -527,3 +540,73 @@ deployment "example-deployment" successfully rolled out
 ```
 
 And if you want to, you can even perform a rollback using `kubectl rollout undo deployment/example-deployment`, as Deployments track their rollouts. Very neat!
+
+## Ingress
+
+Finally, let's backtrack to Services for a bit. While the Service with type NodePort worked fine for our toy application, what if you want to expose multiple Services outside the cluster? Or do something a bit more advanced? Perhaps you'd like to expose a single port outside the cluster, receive HTTP requests through that port and route the received requests to different Services within the cluster. Maybe you'd also like to perform TLS termination there for HTTPS . For exactly those purposes, Kubernetes provides a resource type called [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/).
+
+Creating an Ingress by itself does not do anything. You also need an Ingress controller, which monitors the created Ingress resource and you know, actually does the things the resource defines. Luckily for us, k3d comes with a built-in ingress controller using [Traefik](https://doc.traefik.io/traefik/providers/kubernetes-ingress/). However, as k3d runs the cluster nodes in Docker containers, we have to create the cluster in a specific manner, where we map a host port to a port on a load balancer provided by k3d, which sits in front of the server nodes of the cluster:
+
+```shell
+$ k3d cluster create my-cluster --servers 1 --agents 1 --registry-create -p "8090:80@loadbalancer"
+```
+
+When the cluster is created this way, the port 8090 on the host will reach the port 80 on the load balancer, which serves as the gateway to our Ingress and the cluster.
+
+### Creating an Ingress
+
+Unsurprisingly, our Ingress definition looks pretty familiar:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-example
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: example-service-cluster-ip
+                port:
+                  number: 80
+```
+
+This minimal example should be fairly obvious. Our Ingress will just route all HTTP requests it receives to our previous example of a Service. You could of course perform more complex path based routing to route to multiple Services, but for our learning purposes this is fine. To get our humble little Ingress up and running, let's first bring up our Deployment and Service again, since we recreated the entire cluster and everything was wiped out:
+
+```shell
+$ kubectl apply -f deployment.yml
+
+deployment.apps/example-deployment created
+
+$ kubectl apply -f service-cluster-ip.yml
+
+service/example-service-cluster-ip created
+```
+
+> These commands assume you've also republished the container images if the container registry was wiped out
+
+Finally, let's create the Ingress itself:
+
+```shell
+kubectl apply -f ingress.yml
+
+ingress.networking.k8s.io/ingress-example created
+```
+
+Now for the moment of truth, let's try curling our Ingress from outside the cluster:
+
+```shell
+$ curl localhost:8090
+
+{"host":"example-deployment-76bcb4bf6c-p5hpg","ip":"10.42.0.7"}
+```
+
+And it works! Traffic is flowing from outside the cluster, through the Ingress, all the way to our pods.
+
+## Conclusion
+
+There's quite a lot to unpack here, but let's see if we can summarize all the things we've done. We've created a Kubernetes cluster and deployed our containerized application as a pod. To be more specific, this pod is actually several replicas, all of which are managed by a ReplicaSet. Going even further, this ReplicaSet is maintained by a Deployment, allowing us to perform rolling updates to our pods. In order to route traffic to these ephemeral pods, we created a Service. And to allow traffic to flow from outside the cluster to our Service, we created an Ingress. Whew!
