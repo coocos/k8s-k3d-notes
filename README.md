@@ -14,6 +14,11 @@ These notes cover the following things:
 
 Plenty of Kubernetes concepts are not covered here, including ConfigMaps, Secrets, DaemonSets, Jobs, CronJobs, PersistentVolumes and many other things. Please see the [Kubernetes documentation](https://kubernetes.io/docs/concepts/) for more information.
 
+The examples were tested with the following:
+
+* kubectl 1.19.7
+* k3d 4.4.2
+
 ## Creating a cluster
 
 First things first, you need a Kubernetes cluster to deploy your applications to. There are obviously a number of ways to go about this, but especially for local development k3d is a lightweight option for spinning up a multinode cluster on a single machine. Additionally, k3d ships with an optional [local container registry](https://k3d.io/usage/guides/registries/#using-a-local-registry), which you can use to distribute your custom container images within the cluster. If you're running MacOS, you can use [brew](https://github.com/Homebrew/brew) to install k3d:
@@ -28,7 +33,7 @@ Then, create a simple cluster with one server node, one worker node and a contai
 $ k3d cluster create my-cluster --servers 1 --agents 1 --registry-create
 ```
 
-If everything went okay, now you should have a working cluster. You can verify this with:
+If everything went okay, now you should have a working cluster. You can verify this with `kubectl`:
 
 ```shell
 $ kubectl cluster-info
@@ -37,6 +42,8 @@ Kubernetes master is running at https://0.0.0.0:50052
 CoreDNS is running at https://0.0.0.0:50052/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 Metrics-server is running at https://0.0.0.0:50052/api/v1/namespaces/kube-system/services/https:metrics-server:/proxy
 ```
+
+> If you haven't got kubectl installed, you can grab it [from here](https://kubernetes.io/docs/tasks/tools/).
 
 You can also check the state of the nodes you created:
 
@@ -60,7 +67,7 @@ cb05365719fe   rancher/k3s:latest         "/bin/k3s agent"         2 minutes ago
 7158a5695881   registry:2                 "/entrypoint.sh /etc…"   2 minutes ago   Up 2 minutes   0.0.0.0:50858->5000/tcp           k3d-my-cluster-registry
 ```
 
-Looking great!
+So we have one container for the server node, one for the agent node, one for a load balancer and one for a container registry. Great!
 
 ## Your very first pod
 
@@ -78,7 +85,7 @@ from flask import Flask
 app = Flask(__name__)
 
 
-@app.route('/')
+@app.route("/")
 def home():
     return {
         "host": platform.node()
@@ -543,19 +550,19 @@ And if you want to, you can even perform a rollback using `kubectl rollout undo 
 
 ## Ingress
 
-Finally, let's backtrack to Services for a bit. While the Service with type NodePort worked fine for our toy application, what if you want to expose multiple Services outside the cluster? Or do something a bit more advanced? Perhaps you'd like to expose a single port outside the cluster, receive HTTP requests through that port and route the received requests to different Services within the cluster. Maybe you'd also like to perform TLS termination there for HTTPS . For exactly those purposes, Kubernetes provides a resource type called [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/).
+Finally, let's backtrack to services for a bit. While the service with type NodePort worked fine for our toy application, what if you want to expose multiple services outside the cluster? Or do something a bit more advanced? Perhaps you'd like to expose a single port outside the cluster, receive HTTP requests through that port and route the received requests to different services within the cluster. Maybe you'd also like to perform TLS termination there for HTTPS . For exactly those purposes, Kubernetes provides a resource type called [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/).
 
-Creating an Ingress by itself does not do anything. You also need an Ingress controller, which monitors the created Ingress resource and you know, actually does the things the resource defines. Luckily for us, k3d comes with a built-in ingress controller using [Traefik](https://doc.traefik.io/traefik/providers/kubernetes-ingress/). However, as k3d runs the cluster nodes in Docker containers, we have to create the cluster in a specific manner, where we map a host port to a port on a load balancer provided by k3d, which sits in front of the server nodes of the cluster:
+Creating an ingress by itself does not do anything. You also need an ingress controller, which monitors the created ingress resource and you know, actually does the things the resource defines. Luckily for us, k3d comes with a built-in ingress controller using [Traefik](https://doc.traefik.io/traefik/providers/kubernetes-ingress/). However, as k3d runs the cluster nodes in Docker containers, we have to create the cluster in a specific manner, where we map a host port to a port on a load balancer provided by k3d, which sits in front of the server nodes of the cluster:
 
 ```shell
 $ k3d cluster create my-cluster --servers 1 --agents 1 --registry-create -p "8090:80@loadbalancer"
 ```
 
-When the cluster is created this way, the port 8090 on the host will reach the port 80 on the load balancer, which serves as the gateway to our Ingress and the cluster.
+When the cluster is created this way, the port 8090 on the host will reach the port 80 on the load balancer, which serves as the gateway to our ingress and the cluster.
 
 ### Creating an Ingress
 
-Unsurprisingly, our Ingress definition looks pretty familiar:
+Unsurprisingly, our ingress definition looks pretty familiar:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -575,7 +582,7 @@ spec:
                   number: 80
 ```
 
-This minimal example should be fairly obvious. Our Ingress will just route all HTTP requests it receives to our previous example of a Service. You could of course perform more complex path based routing to route to multiple Services, but for our learning purposes this is fine. To get our humble little Ingress up and running, let's first bring up our Deployment and Service again, since we recreated the entire cluster and everything was wiped out:
+This minimal example should be fairly obvious. Our ingress will just route all HTTP requests it receives to our example service. You could of course perform more complex path based routing to route to multiple services, but for our learning purposes this is fine. To get our humble little ingress up and running, let's first bring up our service and pods, since we recreated the entire cluster and everything was wiped out:
 
 ```shell
 $ kubectl apply -f deployment.yml
@@ -589,7 +596,7 @@ service/example-service-cluster-ip created
 
 > These commands assume you've also republished the container images if the container registry was wiped out
 
-Finally, let's create the Ingress itself:
+Finally, let's create the ingress itself:
 
 ```shell
 kubectl apply -f ingress.yml
@@ -597,7 +604,7 @@ kubectl apply -f ingress.yml
 ingress.networking.k8s.io/ingress-example created
 ```
 
-Now for the moment of truth, let's try curling our Ingress from outside the cluster:
+Now for the moment of truth, let's try curling our ingress from outside the cluster:
 
 ```shell
 $ curl localhost:8090
@@ -605,7 +612,7 @@ $ curl localhost:8090
 {"host":"example-deployment-76bcb4bf6c-p5hpg","ip":"10.42.0.7"}
 ```
 
-And it works! Traffic is flowing from outside the cluster, through the Ingress, all the way to our pods.
+And it works! Traffic is flowing from outside the cluster, through the ingress, all the way to our pods.
 
 ## Conclusion
 
