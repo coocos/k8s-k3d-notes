@@ -1,0 +1,12 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: example-job
+spec:
+  template:
+    spec:
+      containers:
+        - name: flaky-app
+          image: k3d-my-cluster-registry:50664/flaky-app:0.1
+      restartPolicy: Never
+  backoffLimit: 10
