@@ -33,7 +33,7 @@ When executed, this application will randomly either fail or succeed. If it fail
 
 ### Publishing our application
 
-Now that we have our application defined, let's write [a simple do-not-use-this-in-production Dockerfile](./example/Dockerfile) for it:
+Now that we have our application defined, let's write [a simple do-not-use-this-in-production Dockerfile](./app/Dockerfile) for it:
 
 ```dockerfile
 FROM python:3.9-alpine
